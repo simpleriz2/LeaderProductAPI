@@ -33,7 +33,8 @@
     "worker:help": "node dist/workers/helpAssistantWorker.js",
     "worker:help:dev": "node -r ts-node/register src/workers/helpAssistantWorker.ts",
     "test:platform-pilot": "node --test dev/platform-pilot/pilot.test.cjs",
-    "test:realtime-wire": "node --experimental-strip-types --test dev/realtime/subscriptions.test.cjs"
+    "test:realtime-wire": "node --experimental-strip-types --test dev/realtime/subscriptions.test.cjs",
+    "test:realtime-postgres": "node -r ts-node/register/transpile-only --test dev/realtime/postgresPolicy.test.cjs"
   },
   "keywords": [],
   "author": "",
