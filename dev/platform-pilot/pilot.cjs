@@ -54,13 +54,14 @@ async function startPilot() {
     }
     const session = lookupSession(bearer(req));
     if(!session) return json(res, 401, { error: 'Unauthorized' });
-    if(req.method === 'GET' && req.url === '/discovery') return json(res, 200, { company: session.company, companyApi: companies[session.company].url, release: signedSets.get(session.company) });
+    if(req.method === 'GET' && req.url === '/discovery') return json(res, 200, { company: session.company, companyApi: companies[session.company].url, artifactApi: artifactServer.url, release: signedSets.get(session.company) });
     if(req.method === 'POST' && req.url === '/tokens') {
       const { audience } = await readBody(req);
       if(![`company:${session.company}`, 'artifacts'].includes(audience)) return json(res, 403, { error: 'Audience denied' });
       const token = randomBytes(32).toString('base64url');
-      tokens.set(hash(token), { ...session, session: hash(bearer(req)), audience, expires: Date.now() + 60000 });
-      return json(res, 200, { token, audience, company: session.company });
+      const expiresAt = Date.now() + 60000;
+      tokens.set(hash(token), { ...session, session: hash(bearer(req)), audience, expires: expiresAt });
+      return json(res, 200, { token, audience, company: session.company, user: session.user, expiresAt });
     }
     json(res, 404, { error: 'Not found' });
   });
