@@ -37,3 +37,7 @@ test('public TEXT scan displays literal text and cannot execute stored HTML',asy
  rows.get('private-qr').qrData='<img src=x onerror=alert(1)><script>alert(2)</script>&text';
  const response=await request('/qr/private-qr/scan');expect(response.status).toBe(200);const html=await response.text();expect(html).toContain('&lt;script&gt;');expect(html).toContain('&amp;text');expect(html).not.toContain('<script>');expect(html).not.toContain('<img');expect(response.headers.get('content-security-policy')).toContain("default-src 'none'");expect(response.headers.get('x-content-type-options')).toBe('nosniff');
 });
+test('oversized/ambiguous image parameters fail without caching while valid query still produces PNG',async()=>{
+ for(const query of ['width=100000000','width=300&width=900','margin=99999','darkColor=not-hex','errorCorrection=bad']){const response=await request('/qr/private-qr?'+query,1);expect(response.status).toBe(400);await response.json();}expect(cached.size).toBe(0);
+ const response=await request('/qr/private-qr?width=200&margin=0&simple=true',1);expect(response.status).toBe(200);const body=await response.json();expect(body.data.createdBy).toBeUndefined();const png=Buffer.from(body.data.qrImage.split(',')[1],'base64');expect(png.readUInt32BE(16)).toBe(200);
+});

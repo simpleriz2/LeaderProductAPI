@@ -1,14 +1,7 @@
 import QRCode from 'qrcode';
 import { validateQRData } from '../utils/validateQRData';
 
-interface QRCodeOptions {
-  width?: number;
-  color?: {
-    dark?: string;
-    light?: string;
-  };
-  errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
-}
+import {validateQrImageOptions,type QrImageOptions as QRCodeOptions} from '../modules/qr/imageOptions';
 
 /**
  * Генерирует QR код в формате Base64
@@ -22,15 +15,7 @@ export const generateQRCode = async (
   options: QRCodeOptions = {}
 ): Promise<string> => {
   try {
-    const defaultOptions: QRCode.QRCodeToDataURLOptions = {
-      width: 200,
-      color: {
-        dark: '#000000',
-        light: '#ffffff'
-      },
-      errorCorrectionLevel: 'M',
-      ...options
-    };
+    const defaultOptions=validateQrImageOptions(options);
 
     if (!data || typeof data !== 'string') {
       throw new Error('Данные для QR кода должны быть непустой строкой');
@@ -42,23 +27,6 @@ export const generateQRCode = async (
     throw new Error(
       `Не удалось сгенерировать QR код: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`
     );
-  }
-};
-
-/**
- * Валидация опций генерации QR кода
- */
-const validateOptions = (options: QRCodeOptions): void => {
-  if (options.width && (options.width < 50 || options.width > 1000)) {
-    throw new Error('Ширина QR кода должна быть между 50 и 1000 пикселями');
-  }
-  
-  if (options.color?.dark && !/^#[0-9A-F]{6}$/i.test(options.color.dark)) {
-    throw new Error('Некорректный формат цвета (dark)');
-  }
-
-  if (options.color?.light && !/^#[0-9A-F]{6}$/i.test(options.color.light)) {
-    throw new Error('Некорректный формат цвета (light)');
   }
 };
 

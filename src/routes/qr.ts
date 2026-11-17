@@ -1,3 +1,4 @@
+import {parseQrImageQuery} from '../modules/qr/imageOptions';
 import {renderPublicQrText} from '../modules/qr/publicText';
 import express from 'express';
 import multer from 'multer';
@@ -1181,15 +1182,6 @@ router.get(
   ) => {
     try {
       const { id } = req.params;
-      const {
-        simple,
-        width = '300',
-        darkColor = '000000',
-        lightColor = 'ffffff',
-        margin = '1',
-        errorCorrection = 'M',
-      } = req.query;
-
       const userId = req.user?.userId;
       const isAdmin = req.user?.role === 'ADMIN';
 
@@ -1225,28 +1217,21 @@ router.get(
           .json(errorResponse('Нет прав доступа', ErrorCodes.FORBIDDEN));
       }
 
+      let image:ReturnType<typeof parseQrImageQuery>;
+      try{image=parseQrImageQuery(req.query);}catch{return res.status(400).json(errorResponse('Некорректные параметры изображения QR',ErrorCodes.VALIDATION_ERROR));}
+
       // Authorization is ALWAYS based on the current object, even when PNG/detail bytes are cached.
       // Subject/role also separate representation caches; existing qr:<id> invalidation still covers all variants.
-      const cacheKey = `qr:${id}:v2:${userId}:${isAdmin ? 'admin' : 'owner'}:${simple || ''}:${width}:${darkColor}:${lightColor}:${margin}:${errorCorrection}`;
+      const cacheKey = `qr:${id}:v2:${userId}:${isAdmin ? 'admin' : 'owner'}:${image.cacheVariant}`;
       const cached = await cacheGet<any>(cacheKey);
       if (cached) return res.status(200).json(successResponse(cached));
 
-      const options = {
-        width: parseInt(width as string),
-        color: {
-          dark: `#${darkColor}`,
-          light: `#${lightColor}`,
-        },
-        margin: parseInt(margin as string),
-        errorCorrectionLevel: errorCorrection as 'L' | 'M' | 'Q' | 'H',
-      };
-
       const domen = process.env.DOMEN_URL || 'http://127.0.0.1:3000';
       const urlQR = domen + '/qr/' + qr.id + '/scan';
-      const qrImage = await generateQRCode(urlQR, options);
+      const qrImage = await generateQRCode(urlQR, image.options);
 
       let responseData;
-      if (simple === 'true') {
+      if (image.simple) {
         responseData = {
           id: qr.id,
           qrData: qr.qrData,

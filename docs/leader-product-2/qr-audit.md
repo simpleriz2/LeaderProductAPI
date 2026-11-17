@@ -15,3 +15,6 @@ Detail cache was read before DB ownership check and keyed without actor. A warm 
 These are legacy fork route fixes, not completed tenant authorization: the source still has no company model, JWT ADMIN trust/global legacy roles and other inherited auth design debt. Target Company handlers require Central introspection and server-side tenant/object/action permissions. Do not directly expose or reuse the legacy router as the new SaaS module service.
 
 Next slices: enforce bounded image parameters before PNG allocation; fix verified update/contact mismatches; introduce typed QR domain/API/storage contracts and real fixture Company persistence; port UI/media/analytics behind lifecycle/adapters with parity evidence. Original implementation/data/recovery remains until replacement acceptance.
+
+## Bounded image options implemented
+PNG renderer receives only validated width50–1000, optional margin0–32, six-digit RGB colors and L/M/Q/H correction. HTTP query defaults remain300px/margin1; generic service default remains200px. Duplicate/array/fractional/oversized query values are rejected, not forwarded to allocator. Cache variants use canonical validated values. The old unused validateOptions function was replaced with the hot-path validator, with no recovery/data removal.
