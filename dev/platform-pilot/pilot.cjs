@@ -4,6 +4,7 @@ const { createArtifactRegistry } = require('./artifactRegistry.cjs');
 const { randomUUID, randomBytes, generateKeyPairSync, createHash, sign } = require('node:crypto');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const fixtureUsers = { alice: { company: 'alpha', modules: ['qr', 'help'] }, bob: { company: 'beta', modules: ['qr'] }, carol: { company: 'alpha', modules: ['qr'] } };
+const fixturePermissions={alice:{qr:['view_qr','create_qr','update_qr','delete_qr','view_qr_analytics'],help:['read_help','send_help']},bob:{qr:['view_qr','create_qr','update_qr','delete_qr']},carol:{qr:['view_qr']}};
 function json(res, status, body) { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); }
 async function readBody(req) {
   let body = ''; for await(const chunk of req) { body += chunk; if(body.length > 16384) throw Error('Body too large'); }
@@ -34,12 +35,14 @@ async function startPilot(options = {}) {
   const pair = generateKeyPairSync('ed25519');
   const registry = createArtifactRegistry(); const assigned = new Map();
   const revokedUsers = new Set(); const rightsRevision=new Map(Object.keys(fixtureUsers).map(user=>[user,0])); const currentModules = new Map(Object.entries(fixtureUsers).map(([user, f]) => [user, [...f.modules]]));
+  const currentPermissions=new Map(Object.entries(fixturePermissions).map(([user,matrix])=>[user,structuredClone(matrix)]));
+  const permissionSnapshot=(user,modules)=>Object.fromEntries(modules.map(module=>[module,[...(currentPermissions.get(user)[module]||[])]]));
   function assignRelease(release, files) {
     if (!['alpha','beta'].includes(release.company)) throw Error('Unknown fixture company');
     const registered = registry.register(release, files); assigned.set(registered.company, registered.id);
   }
   function offlineGrant(session){
-    const payload=JSON.stringify({format:1,purpose:'lp2-offline-session',issuedAt:Date.now(),session:{company:session.company,user:session.user,modules:[...currentModules.get(session.user)],confirmation:`${session.confirmation}.${rightsRevision.get(session.user)}`}});
+    const payload=JSON.stringify({format:1,purpose:'lp2-offline-session',issuedAt:Date.now(),session:{company:session.company,user:session.user,modules:[...currentModules.get(session.user)],permissions:permissionSnapshot(session.user,currentModules.get(session.user)),confirmation:`${session.confirmation}.${rightsRevision.get(session.user)}`}});
     return{keyId:'pilot-key',payload,signature:sign(null,Buffer.from(payload),pair.privateKey).toString('base64')};
   }
   function signedRelease(session) {
@@ -63,8 +66,10 @@ async function startPilot(options = {}) {
   const activeToken = token => {
     const t = tokens.get(hash(token || '')); if(!t || t.expires <= Date.now()) return null;
     const s = sessions.get(t.session);
-    return s && !s.revoked && s.expires > Date.now() && s.company === t.company && s.user === t.user
-      ? { ...t, modules: t.modules.filter(module => currentModules.get(s.user).includes(module)) } : null;
+    if(!s||s.revoked||s.expires<=Date.now()||s.company!==t.company||s.user!==t.user)return null;
+    const modules=t.modules.filter(module=>currentModules.get(s.user).includes(module));
+    const permissions=Object.fromEntries(modules.map(module=>[module,(t.permissions[module]||[]).filter(action=>(currentPermissions.get(s.user)[module]||[]).includes(action))]));
+    return{...t,modules,permissions};
   };
   let companies = {};
   const central = await listen(async (req, res) => {
@@ -81,7 +86,7 @@ async function startPilot(options = {}) {
       if(!service) return json(res, 403, { active: false });
       const { token } = await readBody(req); const t = activeToken(token);
       if(!t || t.audience !== service.audience || (service.company && t.company !== service.company)) return json(res, 200, { active: false });
-      return json(res, 200, { active: true, user: t.user, company: t.company, modules: t.modules, audience: t.audience, releaseId: t.releaseId });
+      return json(res, 200, { active: true, user: t.user, company: t.company, modules: t.modules, permissions:t.permissions, audience: t.audience, releaseId: t.releaseId });
     }
     const session = lookupSession(bearer(req));
     if(!session) return json(res, 401, { error: 'Unauthorized' });
@@ -91,7 +96,7 @@ async function startPilot(options = {}) {
       if(![`company:${session.company}`, 'artifacts'].includes(audience)) return json(res, 403, { error: 'Audience denied' });
       const token = randomBytes(32).toString('base64url');
       const expiresAt = Date.now() + 60000;
-      tokens.set(hash(token), { ...session, modules: [...currentModules.get(session.user)], releaseId: assigned.get(session.company), session: hash(bearer(req)), audience, expires: expiresAt });
+      tokens.set(hash(token), { ...session, modules: [...currentModules.get(session.user)], permissions:permissionSnapshot(session.user,currentModules.get(session.user)), releaseId: assigned.get(session.company), session: hash(bearer(req)), audience, expires: expiresAt });
       return json(res, 200, { token, audience, company: session.company, user: session.user, expiresAt });
     }
     json(res, 404, { error: 'Not found' });
@@ -108,7 +113,7 @@ async function startPilot(options = {}) {
       if(!identity.active) return json(res, 401, { error: 'Unauthorized' });
       const expectedOwner=/^\/records\/([a-z]+)-draft$/.exec(req.url||'')?.[1];
       if(req.method !== 'GET' || !expectedOwner || !Object.hasOwn(fixtureUsers,expectedOwner) || fixtureUsers[expectedOwner].company!==company) return json(res, 404, { error: 'Not found' });
-      if(!identity.modules.includes('qr')) return json(res, 403, { error: 'Module access denied' });
+      if(!identity.modules.includes('qr')||!identity.permissions.qr?.includes('view_qr')) return json(res, 403, { error: 'Module access denied' });
       if(identity.company !== company || identity.user !== expectedOwner) return json(res, 403, { error: 'Object access denied' });
       json(res, 200, { id: `${expectedOwner}-draft`, company, owner: expectedOwner, status: 'fixture-draft' });
     },webOrigins);
@@ -126,6 +131,10 @@ async function startPilot(options = {}) {
     setModules: (user, modules) => {
       if(!Object.hasOwn(fixtureUsers,user) || !Array.isArray(modules) || modules.some(m => !fixtureUsers[user].modules.includes(m))) throw Error('Invalid fixture grants');
       currentModules.set(user,[...new Set(modules)]);rightsRevision.set(user,rightsRevision.get(user)+1);
+    },
+    setPermissions:(user,module,actions)=>{
+      if(!Object.hasOwn(fixturePermissions,user)||!Object.hasOwn(fixturePermissions[user],module)||!Array.isArray(actions)||actions.some(action=>!fixturePermissions[user][module].includes(action)))throw Error('Invalid fixture action grants');
+      currentPermissions.get(user)[module]=[...new Set(actions)];rightsRevision.set(user,rightsRevision.get(user)+1);
     },
     revoke: user => { revokedUsers.add(user); for(const session of sessions.values()) if(session.user === user) session.revoked = true; },
     stopCentral: central.close,

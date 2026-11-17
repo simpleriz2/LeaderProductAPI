@@ -130,3 +130,12 @@ test('browser pilot CORS requires explicit loopback origin and bounded preflight
 test('pilot refuses external origins rather than widening its browser allowlist',async()=>{
  for(const origin of ['https://company.invalid','http://0.0.0.0:3000','http://127.0.0.1:43001/path'])await assert.rejects(startPilot({webOrigins:[origin]}),/explicit loopback/);
 });
+test('individual action grants are signed and enforced on every Company request independently of module license',async t=>{
+ const p=await pilot(t),session=await login(p,'alice'),token=await scoped(p,session,'company:alpha');const url=p.companies.alpha.url+'/records/alice-draft';assert.equal((await request(url,token)).status,200);
+ p.setPermissions('alice','qr',['create_qr']);const discovery=await(await request(p.central.url+'/discovery',session)).json();const grant=JSON.parse(discovery.offlineGrant.payload);assert.ok(grant.session.modules.includes('qr'));assert.deepEqual(grant.session.permissions.qr,['create_qr']);assert.equal(verify(null,Buffer.from(discovery.offlineGrant.payload),p.publicKey,Buffer.from(discovery.offlineGrant.signature,'base64')),true);
+ const before=p.introspections();assert.equal((await request(url,token)).status,403);assert.equal((await request(url,token)).status,403);assert.equal(p.introspections()-before,2);
+});
+test('old restricted token cannot gain newly granted actions; new token gets only current action confirmation',async t=>{
+ const p=await pilot(t),session=await login(p,'alice');p.setPermissions('alice','qr',[]);const old=await scoped(p,session,'company:alpha');p.setPermissions('alice','qr',['view_qr']);const url=p.companies.alpha.url+'/records/alice-draft';assert.equal((await request(url,old)).status,403);const current=await scoped(p,session,'company:alpha');assert.equal((await request(url,current)).status,200);
+ assert.throws(()=>p.setPermissions('carol','qr',['delete_qr']),/Invalid fixture action/);
+});
