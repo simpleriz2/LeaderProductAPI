@@ -101,3 +101,20 @@ test('registry refuses undeclared module requirements and old manifest formats b
   const legacy=fixtureRelease('alpha','old-format','fixture');legacy.release.format=1;
   assert.throws(()=>p.assignRelease(legacy.release,legacy.files),/Invalid fixture release/);
 });
+
+test('same-company identities receive signed individual offline rights and object-scoped access',async t=>{
+ const p=await pilot(t),alice=await login(p,'alice'),carol=await login(p,'carol');
+ const discovery=async session=>(await request(`${p.central.url}/discovery`,session)).json();
+ const a=await discovery(alice),c=await discovery(carol);
+ for(const d of [a,c]){assert.equal(verify(null,Buffer.from(d.offlineGrant.payload),p.publicKey,Buffer.from(d.offlineGrant.signature,'base64')),true);const grant=JSON.parse(d.offlineGrant.payload);assert.equal(grant.purpose,'lp2-offline-session');assert.equal(grant.session.company,'alpha');assert.equal(grant.format,1);assert.ok(Number.isSafeInteger(grant.issuedAt));}
+ assert.deepEqual(JSON.parse(a.offlineGrant.payload).session.modules,['qr','help']);assert.deepEqual(JSON.parse(c.offlineGrant.payload).session.modules,['qr']);assert.equal(JSON.parse(c.offlineGrant.payload).session.user,'carol');
+ assert.deepEqual(JSON.parse(c.release.payload).artifacts.map(a=>a.module),['qr']);
+ const token=await scoped(p,carol,'company:alpha');
+ assert.equal((await request(`${p.companies.alpha.url}/records/carol-draft`,token)).status,200);
+ assert.equal((await request(`${p.companies.alpha.url}/records/alice-draft`,token)).status,403);
+ const artifactToken=await scoped(p,carol,'artifacts'),help=JSON.parse(a.release.payload).artifacts.find(a=>a.module==='help');
+ assert.equal((await request(`${p.artifactServer.url}/${help.path}`,artifactToken)).status,404);
+ p.setModules('carol',[]);const after=await discovery(carol);assert.deepEqual(JSON.parse(after.offlineGrant.payload).session.modules,[]);assert.notEqual(JSON.parse(after.offlineGrant.payload).session.confirmation,JSON.parse(c.offlineGrant.payload).session.confirmation);
+ assert.equal((await request(`${p.companies.alpha.url}/records/carol-draft`,token)).status,403);
+ p.revoke('carol');assert.equal((await request(`${p.central.url}/discovery`,carol)).status,401);
+});
