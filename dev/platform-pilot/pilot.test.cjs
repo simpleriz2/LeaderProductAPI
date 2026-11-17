@@ -49,7 +49,7 @@ test('private immutable artifacts enforce scope, hash and immediate online revoc
 });
 function fixtureRelease(company, id, content, modules = ['qr']) {
   const bytes = Buffer.from(content); const digest = createHash('sha256').update(bytes).digest('hex'); const key = `artifacts/${digest}.bundle`;
-  return { release: { format: 1, platform: 'android', id, company, minHost: 1, runtime: 'fixture-runtime', api: '1.0.0', artifacts: modules.map(module => ({module, version:'1.0.0', contract:'1.0.0', schema:1, name:`${module}.bundle`, size:bytes.length, digest, path:key, assets:[]})) }, files: new Map([[key,bytes]]), key };
+  return { release: { format: 2, platform: 'android', id, company, minHost: 1, runtime: 'fixture-runtime', api: '1.0.0', artifacts: modules.map(module => ({module, version:'1.0.0', contract:'1.0.0',requires:{minHost:1,capabilities:{},contracts:{}}, schema:1, name:`${module}.bundle`, size:bytes.length, digest, path:key, assets:[]})) }, files: new Map([[key,bytes]]), key };
 }
 test('shared immutable bytes retain all company/module grants and tokens pin a release during download', async t => {
   const alpha = fixtureRelease('alpha','shared-1','same runtime chunk',['qr','help']);
@@ -93,4 +93,11 @@ test('failed registry registration cannot change assignment or publish partial b
   const token=await scoped(p,session,'artifacts');assert.equal((await request(`${p.artifactServer.url}/${fixture.key}`,token)).status,404);
   p.assignRelease(fixture.release,fixture.files);
   const conflict=fixtureRelease('alpha','broken','changed immutable id');assert.throws(()=>p.assignRelease(conflict.release,conflict.files),/Immutable release id conflict/);
+});
+test('registry refuses undeclared module requirements and old manifest formats before assignment',async t=>{
+  const p=await pilot(t), fixture=fixtureRelease('alpha','bad-requirements','fixture');
+  delete fixture.release.artifacts[0].requires;
+  assert.throws(()=>p.assignRelease(fixture.release,fixture.files),/module compatibility/);
+  const legacy=fixtureRelease('alpha','old-format','fixture');legacy.release.format=1;
+  assert.throws(()=>p.assignRelease(legacy.release,legacy.files),/Invalid fixture release/);
 });

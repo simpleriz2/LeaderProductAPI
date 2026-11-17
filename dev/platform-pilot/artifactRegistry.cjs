@@ -1,6 +1,7 @@
 'use strict';
 const { createHash } = require('node:crypto');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+const exact = value => typeof value === 'string' && /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(value);
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(value);
 // In-memory fixture registry. Registration is atomic; immutable bytes may have MANY grants.
 function createArtifactRegistry() {
@@ -8,13 +9,20 @@ function createArtifactRegistry() {
   const releaseKey = (company, release) => `${company}/${release}`;
   return {
     register(release, files) {
-      if (!release || !id(release.company) || !id(release.id) || release.format !== 1 || !['android','web'].includes(release.platform) || !Array.isArray(release.artifacts) || release.artifacts.length > 128 || !(files instanceof Map)) throw Error('Invalid fixture release');
+      if (!release || !id(release.company) || !id(release.id) || release.format !== 2 || !['android','web'].includes(release.platform) || !Array.isArray(release.artifacts) || release.artifacts.length > 128 || !(files instanceof Map)) throw Error('Invalid fixture release');
+      if (!Number.isSafeInteger(release.minHost) || release.minHost < 1 || typeof release.runtime !== 'string' || !release.runtime || !exact(release.api)) throw Error('Invalid release compatibility');
       const snapshot = JSON.parse(JSON.stringify(release)); const payload = JSON.stringify(snapshot);
       const key = releaseKey(snapshot.company, snapshot.id);
       if (releases.has(key) && releases.get(key).payload !== payload) throw Error('Immutable release id conflict');
       const pending = []; const modules = new Set(); let total = 0, count = 0;
       for (const artifact of snapshot.artifacts) {
         if (!id(artifact.module) || modules.has(artifact.module) || !Array.isArray(artifact.assets) || artifact.assets.length > 512) throw Error('Invalid fixture module');
+        const required = artifact.requires;
+        if (!exact(artifact.version) || !exact(artifact.contract) || !Number.isSafeInteger(artifact.schema) || artifact.schema < 0 || !required || !Number.isSafeInteger(required.minHost) || required.minHost < 1) throw Error('Invalid module compatibility');
+        for (const [kind, valid] of [['capabilities', v => Number.isSafeInteger(v) && v > 0], ['contracts', exact]]) {
+          const values = required[kind];
+          if (!values || typeof values !== 'object' || Array.isArray(values) || Object.keys(values).length > 128 || Object.entries(values).some(([name, value]) => !id(name) || !valid(value))) throw Error('Invalid module requirements');
+        }
         modules.add(artifact.module); const names = new Set();
         for (const file of [artifact, ...artifact.assets]) {
           const bytes = files.get(file.path);

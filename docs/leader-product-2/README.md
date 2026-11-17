@@ -36,3 +36,7 @@ Added independent real-HTTP Central/Company/artifact harness; see central-compan
 
 ## Publication quarantine extension
 Retired manual publication commands now fail immediately, including dry-run. New fork release delivery must use the isolated signed company-release pipeline; external publishing remains unauthorized. Existing workflow snapshots and recovery history are retained.
+
+## ADR-008: explicit unreleased module compatibility format
+Accepted: manifest **format2** replaces the local, never deployed format1 prototype; old formats fail closed. Each artifact must declare `requires.minHost`, exact native capability revisions and exact semantic port versions. Host context supplies explicit supported revision/version sets plus supported exported module contracts. Higher revision alone never implies backwards compatibility. Shared runtime family remains an independent compatibility gate; source fingerprint identifies the actual APK/bundle pair. Signed metadata cannot make unavailable native code appear. Empty requirements on QR/Help probes describe delivery fixtures only, not working camera/chat features.
+No deployed/offline client exists on these prototype formats. Future deployed format evolution must retain an explicit offline compatibility window/migration path; rejecting local format1 is not a production update strategy. Business API compatibility and key rotation remain separate backlog items.
