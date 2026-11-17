@@ -118,3 +118,15 @@ test('same-company identities receive signed individual offline rights and objec
  assert.equal((await request(`${p.companies.alpha.url}/records/carol-draft`,token)).status,403);
  p.revoke('carol');assert.equal((await request(`${p.central.url}/discovery`,carol)).status,401);
 });
+test('browser pilot CORS requires explicit loopback origin and bounded preflight contract',async t=>{
+ const p=await startPilot({webOrigins:['http://127.0.0.1:43001']});t.after(()=>p.close());
+ for(const endpoint of [p.central.url,p.companies.alpha.url,p.artifactServer.url]){
+  const allowed=await fetch(endpoint+'/login',{method:'OPTIONS',headers:{origin:'http://127.0.0.1:43001','access-control-request-method':'POST','access-control-request-headers':'authorization, content-type'}});assert.equal(allowed.status,204);assert.equal(allowed.headers.get('access-control-allow-origin'),'http://127.0.0.1:43001');assert.equal(allowed.headers.get('access-control-allow-credentials'),null);
+  const denied=await fetch(endpoint+'/login',{method:'OPTIONS',headers:{origin:'https://untrusted.invalid','access-control-request-method':'POST'}});assert.equal(denied.status,403);assert.equal(denied.headers.get('access-control-allow-origin'),null);
+  const invalid=await fetch(endpoint+'/login',{method:'OPTIONS',headers:{origin:'http://127.0.0.1:43001','access-control-request-method':'DELETE','access-control-request-headers':'x-pilot-service'}});assert.equal(invalid.status,403);
+ }
+ const response=await fetch(p.central.url+'/login',{method:'POST',headers:{origin:'http://127.0.0.1:43001','content-type':'application/json'},body:JSON.stringify({user:'alice',password:'fixture-only'})});assert.equal(response.status,200);assert.equal(response.headers.get('access-control-allow-origin'),'http://127.0.0.1:43001');
+});
+test('pilot refuses external origins rather than widening its browser allowlist',async()=>{
+ for(const origin of ['https://company.invalid','http://0.0.0.0:3000','http://127.0.0.1:43001/path'])await assert.rejects(startPilot({webOrigins:[origin]}),/explicit loopback/);
+});

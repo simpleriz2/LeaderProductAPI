@@ -9,14 +9,27 @@ async function readBody(req) {
   let body = ''; for await(const chunk of req) { body += chunk; if(body.length > 16384) throw Error('Body too large'); }
   return JSON.parse(body || '{}');
 }
-async function listen(handler) {
-  const server = http.createServer((req, res) => { Promise.resolve(handler(req, res)).catch(() => { if(!res.headersSent) json(res, 400, { error: 'Invalid request' }); else res.end(); }); });
+async function listen(handler,webOrigins=new Set()) {
+  const server = http.createServer((req, res) => {
+    const origin=req.headers.origin;
+    if(origin){
+      if(!webOrigins.has(origin))return json(res,403,{error:'Web origin denied'});
+      res.setHeader('access-control-allow-origin',origin);res.setHeader('vary','Origin');
+      if(req.method==='OPTIONS'){
+        const method=req.headers['access-control-request-method'],headers=String(req.headers['access-control-request-headers']||'').toLowerCase().split(',').map(h=>h.trim()).filter(Boolean);
+        if(!['GET','POST'].includes(method)||headers.some(h=>!['authorization','content-type'].includes(h)))return json(res,403,{error:'Preflight denied'});
+        res.writeHead(204,{'access-control-allow-methods':'GET, POST','access-control-allow-headers':'authorization, content-type'});return res.end();
+      }
+    }
+ Promise.resolve(handler(req, res)).catch(() => { if(!res.headersSent) json(res, 400, { error: 'Invalid request' }); else res.end(); }); });
   server.requestTimeout = 2000; server.headersTimeout = 2000;
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   return { server, url: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())) };
 }
 const bearer = req => /^Bearer (.+)$/.exec(req.headers.authorization || '')?.[1];
 async function startPilot(options = {}) {
+  const webOrigins=new Set(options.webOrigins||[]);
+  for(const origin of webOrigins){const url=new URL(origin);if(url.origin!==origin||url.protocol!=='http:'||!['127.0.0.1','localhost','[::1]'].includes(url.hostname))throw Error('Pilot Web origin must be explicit loopback');}
   const sessions = new Map(), tokens = new Map(); const services = new Map(); let introspections = 0;
   const pair = generateKeyPairSync('ed25519');
   const registry = createArtifactRegistry(); const assigned = new Map();
@@ -82,7 +95,7 @@ async function startPilot(options = {}) {
       return json(res, 200, { token, audience, company: session.company, user: session.user, expiresAt });
     }
     json(res, 404, { error: 'Not found' });
-  });
+  },webOrigins);
   const authorizeOnline = async (req, credential) => {
     // No positive cache or local JWT fallback, including during central failure.
     const response = await fetch(`${central.url}/introspect`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-pilot-service': credential }, body: JSON.stringify({ token: bearer(req) }), signal: AbortSignal.timeout(1000) });
@@ -98,7 +111,7 @@ async function startPilot(options = {}) {
       if(!identity.modules.includes('qr')) return json(res, 403, { error: 'Module access denied' });
       if(identity.company !== company || identity.user !== expectedOwner) return json(res, 403, { error: 'Object access denied' });
       json(res, 200, { id: `${expectedOwner}-draft`, company, owner: expectedOwner, status: 'fixture-draft' });
-    });
+    },webOrigins);
   }
   const artifactCredential = randomUUID(); services.set(artifactCredential, { audience: 'artifacts' });
   const artifactServer = await listen(async (req, res) => {
@@ -107,7 +120,7 @@ async function startPilot(options = {}) {
     const bytes = registry.read(req.url?.slice(1), identity);
     if(req.method !== 'GET' || !bytes) return json(res, 404, { error: 'Not found' });
     res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'private, no-store', 'content-length': bytes.length }); res.end(bytes);
-  });
+  },webOrigins);
   return { central, companies, artifactServer, publicKey: pair.publicKey, introspections: () => introspections,
     assignRelease,
     setModules: (user, modules) => {
