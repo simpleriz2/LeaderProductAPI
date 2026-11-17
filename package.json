@@ -31,7 +31,8 @@
     "worker:knowledge": "node dist/workers/knowledgeWorker.js",
     "worker:knowledge:dev": "node -r ts-node/register src/workers/knowledgeWorker.ts",
     "worker:help": "node dist/workers/helpAssistantWorker.js",
-    "worker:help:dev": "node -r ts-node/register src/workers/helpAssistantWorker.ts"
+    "worker:help:dev": "node -r ts-node/register src/workers/helpAssistantWorker.ts",
+    "test:platform-pilot": "node --test dev/platform-pilot/pilot.test.cjs"
   },
   "keywords": [],
   "author": "",
