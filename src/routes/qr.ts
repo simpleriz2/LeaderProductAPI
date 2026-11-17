@@ -1,3 +1,4 @@
+import {renderPublicQrText} from '../modules/qr/publicText';
 import express from 'express';
 import multer from 'multer';
 import { Parser } from '@json2csv/plainjs';
@@ -1198,12 +1199,6 @@ router.get(
           .json(errorResponse('Не авторизован', ErrorCodes.UNAUTHORIZED));
       }
 
-      const cacheKey = `qr:${id}:${simple || ''}:${width}:${darkColor}:${lightColor}:${margin}:${errorCorrection}`;
-      const cached = await cacheGet<any>(cacheKey);
-      if (cached) {
-        return res.status(200).json(successResponse(cached));
-      }
-
       const qr = await prisma.qRList.findUnique({
         where: { id },
         include: {
@@ -1229,6 +1224,12 @@ router.get(
           .status(403)
           .json(errorResponse('Нет прав доступа', ErrorCodes.FORBIDDEN));
       }
+
+      // Authorization is ALWAYS based on the current object, even when PNG/detail bytes are cached.
+      // Subject/role also separate representation caches; existing qr:<id> invalidation still covers all variants.
+      const cacheKey = `qr:${id}:v2:${userId}:${isAdmin ? 'admin' : 'owner'}:${simple || ''}:${width}:${darkColor}:${lightColor}:${margin}:${errorCorrection}`;
+      const cached = await cacheGet<any>(cacheKey);
+      if (cached) return res.status(200).json(successResponse(cached));
 
       const options = {
         width: parseInt(width as string),
@@ -1637,9 +1638,11 @@ router.get('/:id/scan', async (req, res) => {
 
       case 'TEXT':
       default:
-        return res.send(
-          `<html><body><h1>${qr.qrData}</h1></body></html>`
-        );
+        return res
+          .type('html')
+          .set('Content-Security-Policy', "default-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+          .set('X-Content-Type-Options', 'nosniff')
+          .send(renderPublicQrText(qr.qrData));
     }
   } catch (error) {
     console.error('Ошибка трекинга сканирования:', error);
