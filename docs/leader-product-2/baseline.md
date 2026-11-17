@@ -19,3 +19,6 @@ Legacy Web: `EXPO_NO_DOTENV=1 EXPO_PUBLIC_API_URL_DEV=http://127.0.0.1:3000 NODE
 
 ## 2026-11-17 — retired publication CLI quarantine
 Blocked 2 inherited APK/Expo OTA/symbol mutation entrypoints before config, dependencies, files or network. No environment bypass; includes dry-run invocations to avoid reviving original publication paths. Read-only metadata builders/validators and recovery source retained. Node CLI subprocess tests: 2/2 passed with empty environment and missing metadata; API OTA validation suite: 14/14 passed. CI checks refusal before npm installation. No upload, Docker inspection or database access performed.
+
+## 2026-11-17 — complete compiled-package HTTP pilot
+`npm run test:platform-pilot`: 7/7 real HTTP tests passed (~134ms before final cache header adjustment; rerun below). Cross-fork test in APP passed 1/1 in21.98s including three Re.Pack builds and actual authorized binary downloads/activation. No public listener, external resource, original DB, 1C request or publication. Remaining: production persistence, explicit versioned shared contract, key lifecycle/kill-switch, compatibility negotiation beyond short token window, native loader/cache and device acceptance.
