@@ -1,3 +1,4 @@
+import {generateQrVCard} from '../modules/qr/vcard';
 import QRCode from 'qrcode';
 import { validateQRData } from '../utils/validateQRData';
 
@@ -30,31 +31,6 @@ export const generateQRCode = async (
   }
 };
 
-function generateVCard(contact: Record<string, any>): string {
-  const escapeValue = (value: string) =>
-    value.replace(/\n/g, '\\n').replace(/,/g, '\\,');
-
-  let vCard = 'BEGIN:VCARD\nVERSION:3.0\n';
-
-  if (contact.name) vCard += `FN:${escapeValue(contact.name)}\n`;
-  if (contact.phone) vCard += `TEL:${escapeValue(contact.phone)}\n`;
-  if (contact.email) vCard += `EMAIL:${escapeValue(contact.email)}\n`;
-  if (contact.org) vCard += `ORG:${escapeValue(contact.org)}\n`;
-  if (contact.title) vCard += `TITLE:${escapeValue(contact.title)}\n`;
-  if (contact.address) vCard += `ADR:${escapeValue(contact.address)}\n`;
-  if (contact.url) vCard += `URL:${escapeValue(contact.url)}\n`;
-  if (contact.note) vCard += `NOTE:${escapeValue(contact.note)}\n`;
-  if (contact.birthday) vCard += `BDAY:${escapeValue(contact.birthday)}\n`;
-  if (contact.fax) vCard += `FAX:${escapeValue(contact.fax)}\n`;
-  if (contact.photo) vCard += `PHOTO:${escapeValue(contact.photo)}\n`;
-
-  vCard += 'END:VCARD';
-
-  return vCard;
-}
-
-
-
 const ALLOWED_QR_TYPES = ['PHONE','LINK','EMAIL','TEXT','WHATSAPP','TELEGRAM','CONTACT'] as const;
 type AllowedQrType = typeof ALLOWED_QR_TYPES[number];
 
@@ -75,7 +51,7 @@ export function normalizeAndValidate(qrType: AllowedQrType, qrDataRaw: unknown):
     } else {
       try {
         const contactObj = JSON.parse(data);
-        data = generateVCard(contactObj);
+        data = generateQrVCard(contactObj);
       } catch (e) {
         throw new Error('Неверный формат контактных данных');
       }

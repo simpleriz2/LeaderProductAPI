@@ -1,3 +1,4 @@
+import {generateQrVCard} from '../modules/qr/vcard';
 import {parseQrImageQuery} from '../modules/qr/imageOptions';
 import {renderPublicQrText} from '../modules/qr/publicText';
 import express from 'express';
@@ -370,13 +371,14 @@ router.put(
         where: { id },
         data: {
           status: status ?? undefined,
-          description: description ?? undefined,
+          description: description === undefined ? undefined : description,
           qrType: newQrType ?? undefined,
           qrData: newQrData ?? undefined,
         },
         select: {
           id: true,
           qrData: true,
+          qrType: true,
           description: true,
           status: true,
           createdAt: true,
@@ -1446,26 +1448,6 @@ router.delete(
 );
 
 // Публичный маршрут сканирования QR (без авторизации и прав)
-function generateVCard(contact: Record<string, any>): string {
-  const escapeValue = (value: string) =>
-    value.replace(/\n/g, '\\n').replace(/,/g, '\\,');
-
-  let vCard = 'BEGIN:VCARD\nVERSION:3.0\n';
-  if (contact.name) vCard += `FN:${escapeValue(contact.name)}\n`;
-  if (contact.phone) vCard += `TEL:${escapeValue(contact.phone)}\n`;
-  if (contact.email) vCard += `EMAIL:${escapeValue(contact.email)}\n`;
-  if (contact.org) vCard += `ORG:${escapeValue(contact.org)}\n`;
-  if (contact.title) vCard += `TITLE:${escapeValue(contact.title)}\n`;
-  if (contact.address) vCard += `ADR:${escapeValue(contact.address)}\n`;
-  if (contact.url) vCard += `URL:${escapeValue(contact.url)}\n`;
-  if (contact.note) vCard += `NOTE:${escapeValue(contact.note)}\n`;
-  if (contact.birthday) vCard += `BDAY:${escapeValue(contact.birthday)}\n`;
-  if (contact.fax) vCard += `FAX:${escapeValue(contact.fax)}\n`;
-  if (contact.photo) vCard += `PHOTO:${escapeValue(contact.photo)}\n`;
-  vCard += 'END:VCARD';
-  return vCard;
-}
-
 /**
  * @openapi
  * /qr/{id}/scan:
@@ -1600,7 +1582,7 @@ router.get('/:id/scan', async (req, res) => {
           const isIOS = /iPhone|iPad|iPod/i.test(ua);
           let vCard = qr.qrData.startsWith('BEGIN:VCARD')
             ? qr.qrData
-            : generateVCard(JSON.parse(qr.qrData));
+            : generateQrVCard(JSON.parse(qr.qrData));
 
           const vCardData = encodeURIComponent(vCard);
 

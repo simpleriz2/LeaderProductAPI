@@ -5,7 +5,7 @@ const fixtureSecret='lp2-qr-fixture-only-no-production';
 process.env.ACCESS_TOKEN_SECRET=fixtureSecret;
 process.env.DOMEN_URL='http://127.0.0.1:3000';
 const rows=new Map<string,any>();const cached=new Map<string,unknown>();
-const mockPrisma={user:{findUnique:jest.fn()},role:{findUnique:jest.fn()},rolePermissions:{findMany:jest.fn()},qRList:{findUnique:jest.fn(),findFirst:jest.fn()},qRAnalytic:{create:jest.fn()}};
+const mockPrisma={user:{findUnique:jest.fn()},role:{findUnique:jest.fn()},rolePermissions:{findMany:jest.fn()},qRList:{findUnique:jest.fn(),findFirst:jest.fn(),update:jest.fn()},qRAnalytic:{create:jest.fn()}};
 const mockCacheGet=jest.fn(async(key:string)=>cached.get(key)||null),mockCacheSet=jest.fn(async(key:string,value:unknown)=>{cached.set(key,value);});
 jest.mock('../src/prisma/client',()=>({__esModule:true,default:mockPrisma}));
 jest.mock('../src/utils/cache',()=>({cacheGet:(...args:[string])=>mockCacheGet(...args),cacheSet:(...args:[string,unknown])=>mockCacheSet(...args),cacheDelPrefix:jest.fn(async()=>{})}));
@@ -20,8 +20,8 @@ beforeAll(async()=>{const app=express();app.use(express.json());app.use('/qr',qr
 afterAll(async()=>{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));});
 beforeEach(()=>{rows.clear();cached.clear();jest.clearAllMocks();
  mockPrisma.user.findUnique.mockImplementation(async({where,select}:any)=>![1,2].includes(where.id)?null:select.profileStatus?{profileStatus:'ACTIVE'}:{roleId:1,departmentRoles:[]});
- mockPrisma.role.findUnique.mockImplementation(async({where}:any)=>where.name?{parentRole:null}:{parentRoleId:null});mockPrisma.rolePermissions.findMany.mockResolvedValue([{permission:{name:'view_qr'}}]);
- mockPrisma.qRList.findUnique.mockImplementation(async({where}:any)=>rows.get(where.id)||null);mockPrisma.qRList.findFirst.mockImplementation(async({where}:any)=>{const row=rows.get(where.id);return row?.status===where.status?row:null;});mockPrisma.qRAnalytic.create.mockResolvedValue({id:1});
+ mockPrisma.role.findUnique.mockImplementation(async({where}:any)=>where.name?{parentRole:null}:{parentRoleId:null});mockPrisma.rolePermissions.findMany.mockResolvedValue(['view_qr','update_qr'].map(name=>({permission:{name}})));
+ mockPrisma.qRList.findUnique.mockImplementation(async({where}:any)=>rows.get(where.id)||null);mockPrisma.qRList.findFirst.mockImplementation(async({where}:any)=>{const row=rows.get(where.id);return row?.status===where.status?row:null;});mockPrisma.qRAnalytic.create.mockResolvedValue({id:1});mockPrisma.qRList.update.mockImplementation(async({where,data,select}:any)=>{const row={...rows.get(where.id),...Object.fromEntries(Object.entries(data).filter(([,value])=>value!==undefined)),updatedAt:new Date('2026-01-02')};rows.set(where.id,row);return Object.fromEntries(Object.keys(select).map(key=>[key,row[key]]));});
  rows.set('private-qr',{id:'private-qr',createdById:1,qrType:'TEXT',qrData:'Alice private text',description:'Private',status:'ACTIVE',createdAt:new Date('2026-01-01'),createdBy:{id:1,email:'alice@fixture.invalid'}});
 });
 test('warm QR detail cache cannot bypass current object ownership or absence',async()=>{
@@ -40,4 +40,12 @@ test('public TEXT scan displays literal text and cannot execute stored HTML',asy
 test('oversized/ambiguous image parameters fail without caching while valid query still produces PNG',async()=>{
  for(const query of ['width=100000000','width=300&width=900','margin=99999','darkColor=not-hex','errorCorrection=bad']){const response=await request('/qr/private-qr?'+query,1);expect(response.status).toBe(400);await response.json();}expect(cached.size).toBe(0);
  const response=await request('/qr/private-qr?width=200&margin=0&simple=true',1);expect(response.status).toBe(200);const body=await response.json();expect(body.data.createdBy).toBeUndefined();const png=Buffer.from(body.data.qrImage.split(',')[1],'base64');expect(png.readUInt32BE(16)).toBe(200);
+});
+
+test('partial PUT can clear description and returns the QR type required by client item updates',async()=>{
+ const response=await fetch(origin+'/qr/private-qr',{method:'PUT',headers:{authorization:`Bearer ${token(1)}`,'content-type':'application/json'},body:JSON.stringify({description:null}),redirect:'manual'});expect(response.status).toBe(200);const body=await response.json();expect(body.data.description).toBeNull();expect(body.data.qrType).toBe('TEXT');
+});
+test('public legacy JSON contact uses the same name/address preserving VCard generator',async()=>{
+ const row=rows.get('private-qr');row.qrType='CONTACT';row.qrData=JSON.stringify({firstName:'Иван',lastName:'Петров',contactAddress:'Street; 1',phone:'+79991234567'});
+ const response=await request('/qr/private-qr/scan');expect(response.status).toBe(200);expect(response.headers.get('content-type')).toContain('text/vcard');const card=await response.text();expect(card).toContain('FN:Иван Петров');expect(card).toContain('N:Петров;Иван;;;');expect(card).toContain('ADR:;;Street\\; 1;;;;');
 });

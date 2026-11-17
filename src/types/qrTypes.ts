@@ -26,6 +26,7 @@ export type QRUpdateRequest = {
 export type QRUpdateResponse = SuccessResponse<{
   id: string;
   qrData: string;
+  qrType: string;
   description: string | null;
   status: string;
   createdAt: Date;

@@ -25,7 +25,17 @@ jobs:
         env:
           DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:54329/lp2_test
       - run: npm run type-check
-      - run: npm run test:unit -- --runInBand __tests__/orderIntegrity.unit.test.ts __tests__/pushService.unit.test.ts __tests__/realtimeAuthorization.unit.test.ts __tests__/realtimeSubscriptions.unit.test.ts __tests__/help.socket-performance.unit.test.ts __tests__/qr.security.unit.test.ts __tests__/qr.image-options.unit.test.ts
+      - run: npm run test:unit -- --runInBand __tests__/orderIntegrity.unit.test.ts __tests__/pushService.unit.test.ts __tests__/realtimeAuthorization.unit.test.ts __tests__/realtimeSubscriptions.unit.test.ts __tests__/help.socket-performance.unit.test.ts __tests__/qr.security.unit.test.ts __tests__/qr.image-options.unit.test.ts __tests__/qr.contact.unit.test.ts
+      - uses: actions/checkout@v4
+        with:
+          repository: simpleriz2/LeaderProductAPP
+          ref: 4a70a0726f321b23dc89e2945cb5a6f83ed2fb4a
+          path: partner-app
+          sparse-checkout: src/entities/qr
+          persist-credentials: false
+      - run: npm run test:qr-contact-contract
+        env:
+          LP2_APP_ROOT: ${{ github.workspace }}/partner-app
       - run: npm run test:platform-pilot
       - run: npm run test:realtime-wire
   realtime-postgres:
