@@ -37,7 +37,8 @@
     "test:realtime-postgres": "node -r ts-node/register/transpile-only --test dev/realtime/postgresPolicy.test.cjs",
     "test:qr-contact-contract": "node -r ts-node/register/transpile-only --test dev/qr/contactContract.test.cjs",
     "test:qr-company-postgres": "node -r ts-node/register/transpile-only --test dev/qr/companyPostgres.test.cjs",
-    "test:qr-company-http": "node -r ts-node/register/transpile-only --test dev/qr/companyHttp.test.cjs"
+    "test:qr-company-http": "node -r ts-node/register/transpile-only --test dev/qr/companyHttp.test.cjs",
+    "test:qr-client-contract": "cross-env LP2_QR_CLIENT_CONTRACT=1 npm run test:qr-company-http"
   },
   "keywords": [],
   "author": "",

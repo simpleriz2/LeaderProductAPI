@@ -65,3 +65,6 @@ TypeScript and actual marked-loopback PostgreSQL scenario passed with migration1
 
 ### 2026-11-17: actual Company QR HTTP + PG
 TypeScript passed;18pilot HTTP tests,34retained QR unit tests, real Company repository integration and new actual Central/Company+PostgreSQL HTTP scenario all passed. Scenario checks scoped-vs-universal token, exact PUT preflight, two live introspections for identical create retry, stable idempotent response, changed-payload409, same-company and other-company object denial, read-only creation denial, partial contact/address/null-description edit, stale409, delete/restore independent right, no receipt replay after create right removed, duplicate pagination parameter400 and Central outage503 with durable revision4 still present. PG repository scenario additionally paginates8large stored VCards + original without duplicates/oversized JSON. Marker checked before migrations; only created fixture subjects/records/receipts cleaned; no original server/DB/1C/scan route used.
+
+### 2026-11-17: pinned actual APP QR client -> Company PG HTTP
+Required client-contract command passed with APP77746a9 (scenario~250ms). Safe CI adds pinned readonly sparse checkout in owned PG job; no root app install/build needed. Source contract test cannot silently skip on missing APP. Raw Company test remains independent. Original orders/1C untouched.
