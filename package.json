@@ -35,7 +35,8 @@
     "test:platform-pilot": "node --test dev/platform-pilot/pilot.test.cjs",
     "test:realtime-wire": "node --experimental-strip-types --test dev/realtime/subscriptions.test.cjs",
     "test:realtime-postgres": "node -r ts-node/register/transpile-only --test dev/realtime/postgresPolicy.test.cjs",
-    "test:qr-contact-contract": "node -r ts-node/register/transpile-only --test dev/qr/contactContract.test.cjs"
+    "test:qr-contact-contract": "node -r ts-node/register/transpile-only --test dev/qr/contactContract.test.cjs",
+    "test:qr-company-postgres": "node -r ts-node/register/transpile-only --test dev/qr/companyPostgres.test.cjs"
   },
   "keywords": [],
   "author": "",
