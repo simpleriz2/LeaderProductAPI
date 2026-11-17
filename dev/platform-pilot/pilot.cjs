@@ -4,7 +4,7 @@ const { createArtifactRegistry } = require('./artifactRegistry.cjs');
 const { randomUUID, randomBytes, generateKeyPairSync, createHash, sign } = require('node:crypto');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const fixtureUsers = { alice: { company: 'alpha', modules: ['qr', 'help'] }, bob: { company: 'beta', modules: ['qr'] }, carol: { company: 'alpha', modules: ['qr'] } };
-const fixturePermissions={alice:{qr:['view_qr','create_qr','update_qr','delete_qr','view_qr_analytics'],help:['read_help','send_help']},bob:{qr:['view_qr','create_qr','update_qr','delete_qr']},carol:{qr:['view_qr']}};
+const fixturePermissions={alice:{qr:['view_qr','create_qr','update_qr','delete_qr','restore_qr','view_qr_analytics'],help:['read_help','send_help']},bob:{qr:['view_qr','create_qr','update_qr','delete_qr','restore_qr']},carol:{qr:['view_qr']}};
 function json(res, status, body) { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); }
 async function readBody(req) {
   let body = ''; for await(const chunk of req) { body += chunk; if(body.length > 16384) throw Error('Body too large'); }
@@ -18,8 +18,8 @@ async function listen(handler,webOrigins=new Set()) {
       res.setHeader('access-control-allow-origin',origin);res.setHeader('vary','Origin');
       if(req.method==='OPTIONS'){
         const method=req.headers['access-control-request-method'],headers=String(req.headers['access-control-request-headers']||'').toLowerCase().split(',').map(h=>h.trim()).filter(Boolean);
-        if(!['GET','POST'].includes(method)||headers.some(h=>!['authorization','content-type'].includes(h)))return json(res,403,{error:'Preflight denied'});
-        res.writeHead(204,{'access-control-allow-methods':'GET, POST','access-control-allow-headers':'authorization, content-type'});return res.end();
+        if(!['GET','POST','PUT','DELETE'].includes(method)||headers.some(h=>!['authorization','content-type'].includes(h)))return json(res,403,{error:'Preflight denied'});
+        res.writeHead(204,{'access-control-allow-methods':'GET, POST, PUT, DELETE','access-control-allow-headers':'authorization, content-type'});return res.end();
       }
     }
  Promise.resolve(handler(req, res)).catch(() => { if(!res.headersSent) json(res, 400, { error: 'Invalid request' }); else res.end(); }); });
@@ -129,7 +129,9 @@ async function startPilot(options = {}) {
   };
   for(const company of ['alpha','beta']) {
     const credential = randomUUID(); services.set(credential, { audience: `company:${company}`, company });
+    const qrHandler=options.companyHandlerFactory?.(company,req=>authorizeOnline(req,credential),()=>new Set(supportedApis.get(company)));
     companies[company] = await listen(async (req, res) => {
+      if(qrHandler&&await qrHandler(req,res))return;
       let identity; try { identity = await authorizeOnline(req, credential); } catch { return json(res, 503, { error: 'Central unavailable' }); }
       if(!identity.active) return json(res, 401, { error: 'Unauthorized' });
       if(!supportedApis.get(company).has(identity.api))return json(res,409,{error:'API contract retired; update required'});

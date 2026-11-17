@@ -1,6 +1,4 @@
-import {generateQrVCard} from '../modules/qr/vcard';
 import QRCode from 'qrcode';
-import { validateQRData } from '../utils/validateQRData';
 
 import {validateQrImageOptions,type QrImageOptions as QRCodeOptions} from '../modules/qr/imageOptions';
 
@@ -31,59 +29,4 @@ export const generateQRCode = async (
   }
 };
 
-const ALLOWED_QR_TYPES = ['PHONE','LINK','EMAIL','TEXT','WHATSAPP','TELEGRAM','CONTACT'] as const;
-type AllowedQrType = typeof ALLOWED_QR_TYPES[number];
-
-export function toStringData(raw: unknown): string {
-  if (typeof raw === 'string') return raw;
-  if (typeof raw === 'object') return JSON.stringify(raw);
-  return String(raw ?? '');
-}
-
-export function normalizeAndValidate(qrType: AllowedQrType, qrDataRaw: unknown): string {
-  // приведение к строке/JSON
-  let data = toStringData(qrDataRaw);
-
-  // CONTACT: разрешаем JSON -> VCARD, либо уже готовый VCARD
-  if (qrType === 'CONTACT') {
-    if (data.startsWith('BEGIN:VCARD')) {
-      // уже VCARD
-    } else {
-      try {
-        const contactObj = JSON.parse(data);
-        data = generateQrVCard(contactObj);
-      } catch (e) {
-        throw new Error('Неверный формат контактных данных');
-      }
-    }
-    return data;
-  }
-
-  // для не-CONTACT: валидация строкой
-  if (typeof data !== 'string') {
-    throw new Error('qrData должен быть строкой или объектом');
-  }
-
-  // Спец-нормализация под типы
-  if (qrType === 'PHONE' || qrType === 'WHATSAPP') {
-    // Remove visual separators only; never truncate or silently discard an extension/embedded '+'.
-    const cleaned = data.replace(/[\s().-]/g, '');
-    data = cleaned.startsWith('+') ? cleaned : '+' + cleaned;
-  }
-
-  if (qrType === 'TELEGRAM') {
-    if (!data.startsWith('@')) data = '@' + data.replace(/^@+/, '');
-  }
-
-  const validationError = validateQRData(qrType, data);
-  if (validationError) throw new Error(validationError);
-
-  return data;
-}
-
-export function assertQrType(type?: string): asserts type is AllowedQrType {
-  if (!type || !ALLOWED_QR_TYPES.includes(type as AllowedQrType)) {
-    throw new Error('Неверный тип qrType');
-  }
-}
-
+export {normalizeAndValidate,assertQrType,toStringData} from '../modules/qr/content';

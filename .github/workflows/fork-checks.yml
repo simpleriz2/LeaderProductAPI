@@ -73,3 +73,6 @@ jobs:
       - run: npm run test:qr-company-postgres
         env:
           LP2_COMPANY_TEST_DATABASE_URL: postgresql://lp2_fixture:fixture-only@127.0.0.1:54329/lp2_realtime_fixture
+      - run: npm run test:qr-company-http
+        env:
+          LP2_COMPANY_TEST_DATABASE_URL: postgresql://lp2_fixture:fixture-only@127.0.0.1:54329/lp2_realtime_fixture
