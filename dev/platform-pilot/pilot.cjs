@@ -33,20 +33,23 @@ async function startPilot(options = {}) {
   for(const origin of webOrigins){const url=new URL(origin);if(url.origin!==origin||url.protocol!=='http:'||!['127.0.0.1','localhost','[::1]'].includes(url.hostname))throw Error('Pilot Web origin must be explicit loopback');}
   const sessions = new Map(), tokens = new Map(); const services = new Map(); let introspections = 0;
   const pair = generateKeyPairSync('ed25519');
-  const registry = createArtifactRegistry(); const assigned = new Map();
+  const registry = createArtifactRegistry(); const assigned = new Map();const platformModules=new Map();
+  const assignmentKey=(company,platform)=>`${company}/${platform}`;
+  const assignedId=session=>assigned.get(assignmentKey(session.company,session.platform));
+  const effectiveModules=session=>currentModules.get(session.user).filter(module=>platformModules.get(assignmentKey(session.company,session.platform))?.has(module));
   const revokedUsers = new Set(); const rightsRevision=new Map(Object.keys(fixtureUsers).map(user=>[user,0])); const currentModules = new Map(Object.entries(fixtureUsers).map(([user, f]) => [user, [...f.modules]]));
   const currentPermissions=new Map(Object.entries(fixturePermissions).map(([user,matrix])=>[user,structuredClone(matrix)]));
   const permissionSnapshot=(user,modules)=>Object.fromEntries(modules.map(module=>[module,[...(currentPermissions.get(user)[module]||[])]]));
   function assignRelease(release, files) {
     if (!['alpha','beta'].includes(release.company)) throw Error('Unknown fixture company');
-    const registered = registry.register(release, files); assigned.set(registered.company, registered.id);
+    const registered = registry.register(release, files); const key=assignmentKey(registered.company,registered.platform);assigned.set(key,registered.id);platformModules.set(key,new Set(registered.artifacts.map(a=>a.module)));
   }
   function offlineGrant(session){
-    const payload=JSON.stringify({format:1,purpose:'lp2-offline-session',issuedAt:Date.now(),session:{company:session.company,user:session.user,modules:[...currentModules.get(session.user)],permissions:permissionSnapshot(session.user,currentModules.get(session.user)),confirmation:`${session.confirmation}.${rightsRevision.get(session.user)}`}});
+    const payload=JSON.stringify({format:1,purpose:'lp2-offline-session',issuedAt:Date.now(),session:{company:session.company,user:session.user,modules:effectiveModules(session),permissions:permissionSnapshot(session.user,effectiveModules(session)),confirmation:`${session.confirmation}.${rightsRevision.get(session.user)}`}});
     return{keyId:'pilot-key',payload,signature:sign(null,Buffer.from(payload),pair.privateKey).toString('base64')};
   }
   function signedRelease(session) {
-    const release = registry.release(session.company, assigned.get(session.company));
+    const release = registry.release(session.company, assignedId(session));
     release.artifacts = release.artifacts.filter(a => currentModules.get(session.user).includes(a.module));
     const payload = JSON.stringify(release);
     return { keyId: 'pilot-key', payload, signature: sign(null, Buffer.from(payload), pair.privateKey).toString('base64') };
@@ -67,17 +70,20 @@ async function startPilot(options = {}) {
     const t = tokens.get(hash(token || '')); if(!t || t.expires <= Date.now()) return null;
     const s = sessions.get(t.session);
     if(!s||s.revoked||s.expires<=Date.now()||s.company!==t.company||s.user!==t.user)return null;
-    const modules=t.modules.filter(module=>currentModules.get(s.user).includes(module));
+    const modules=t.modules.filter(module=>effectiveModules(s).includes(module));
     const permissions=Object.fromEntries(modules.map(module=>[module,(t.permissions[module]||[]).filter(action=>(currentPermissions.get(s.user)[module]||[]).includes(action))]));
     return{...t,modules,permissions};
   };
   let companies = {};
   const central = await listen(async (req, res) => {
     if(req.method === 'POST' && req.url === '/login') {
-      const { user, password } = await readBody(req);
+      const { user, password,platform:requestedPlatform } = await readBody(req);
+      // Compatibility for the earlier browser pilot: an allowlisted browser Origin implies Web.
+      const platform=requestedPlatform??(req.headers.origin?'web':'android');
+      if(!['android','web'].includes(platform))return json(res,400,{error:'Unsupported client platform'});
       if(!Object.hasOwn(fixtureUsers, user) || revokedUsers.has(user) || password !== 'fixture-only') return json(res, 401, { error: 'Unauthorized' });
       const token = randomBytes(32).toString('base64url');
-      sessions.set(hash(token), { ...fixtureUsers[user], user, confirmation:randomUUID(), revoked: false, expires: Date.now() + 3600000 });
+      sessions.set(hash(token), { ...fixtureUsers[user], user, platform, confirmation:randomUUID(), revoked: false, expires: Date.now() + 3600000 });
       return json(res, 200, { token });
     }
     if(req.method === 'POST' && req.url === '/introspect') {
@@ -86,17 +92,18 @@ async function startPilot(options = {}) {
       if(!service) return json(res, 403, { active: false });
       const { token } = await readBody(req); const t = activeToken(token);
       if(!t || t.audience !== service.audience || (service.company && t.company !== service.company)) return json(res, 200, { active: false });
-      return json(res, 200, { active: true, user: t.user, company: t.company, modules: t.modules, permissions:t.permissions, audience: t.audience, releaseId: t.releaseId });
+      return json(res, 200, { active: true, user: t.user, company: t.company, modules: t.modules, permissions:t.permissions, platform:t.platform, audience: t.audience, releaseId: t.releaseId });
     }
     const session = lookupSession(bearer(req));
     if(!session) return json(res, 401, { error: 'Unauthorized' });
-    if(req.method === 'GET' && req.url === '/discovery') return json(res, 200, { company: session.company, offlineGrant:offlineGrant(session), companyApi: companies[session.company].url, artifactApi: artifactServer.url, modules: [...currentModules.get(session.user)], release: signedRelease(session) });
+    if(((req.method==='GET'&&req.url==='/discovery')||(req.method==='POST'&&req.url==='/tokens'))&&!assignedId(session))return json(res,409,{error:'No assigned platform release'});
+    if(req.method === 'GET' && req.url === '/discovery') return json(res, 200, { company: session.company, offlineGrant:offlineGrant(session), companyApi: companies[session.company].url, artifactApi: artifactServer.url, modules: effectiveModules(session), release: signedRelease(session) });
     if(req.method === 'POST' && req.url === '/tokens') {
       const { audience } = await readBody(req);
       if(![`company:${session.company}`, 'artifacts'].includes(audience)) return json(res, 403, { error: 'Audience denied' });
       const token = randomBytes(32).toString('base64url');
       const expiresAt = Date.now() + 60000;
-      tokens.set(hash(token), { ...session, modules: [...currentModules.get(session.user)], permissions:permissionSnapshot(session.user,currentModules.get(session.user)), releaseId: assigned.get(session.company), session: hash(bearer(req)), audience, expires: expiresAt });
+      tokens.set(hash(token), { ...session, modules: effectiveModules(session), permissions:permissionSnapshot(session.user,effectiveModules(session)), releaseId: assignedId(session), session: hash(bearer(req)), audience, expires: expiresAt });
       return json(res, 200, { token, audience, company: session.company, user: session.user, expiresAt });
     }
     json(res, 404, { error: 'Not found' });
