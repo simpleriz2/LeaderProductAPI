@@ -40,9 +40,17 @@ async function startPilot(options = {}) {
   const revokedUsers = new Set(); const rightsRevision=new Map(Object.keys(fixtureUsers).map(user=>[user,0])); const currentModules = new Map(Object.entries(fixtureUsers).map(([user, f]) => [user, [...f.modules]]));
   const currentPermissions=new Map(Object.entries(fixturePermissions).map(([user,matrix])=>[user,structuredClone(matrix)]));
   const permissionSnapshot=(user,modules)=>Object.fromEntries(modules.map(module=>[module,[...(currentPermissions.get(user)[module]||[])]]));
+  const supportedApis=new Map(['alpha','beta'].map(company=>[company,new Set(['1.0.0'])]));
+  const assignedHistory=new Set();
+  const historyKey=(company,platform,id)=>`${company}/${platform}/${id}`;
+  function requireSupportedApis(company,versions){
+    if(!supportedApis.has(company)||!Array.isArray(versions)||!versions.length||versions.length>32||versions.some(v=>typeof v!=='string'||!/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(v)))throw Error('Invalid API compatibility window');
+    return new Set(versions);
+  }
   function assignRelease(release, files) {
     if (!['alpha','beta'].includes(release.company)) throw Error('Unknown fixture company');
-    const registered = registry.register(release, files); const key=assignmentKey(registered.company,registered.platform);assigned.set(key,registered.id);platformModules.set(key,new Set(registered.artifacts.map(a=>a.module)));
+    if(!supportedApis.get(release.company).has(release.api))throw Error('Company API contract not deployed');
+    const registered = registry.register(release, files); const key=assignmentKey(registered.company,registered.platform);assigned.set(key,registered.id);platformModules.set(key,new Set(registered.artifacts.map(a=>a.module)));assignedHistory.add(historyKey(registered.company,registered.platform,registered.id));
   }
   function offlineGrant(session){
     const payload=JSON.stringify({format:1,purpose:'lp2-offline-session',issuedAt:Date.now(),session:{company:session.company,user:session.user,modules:effectiveModules(session),permissions:permissionSnapshot(session.user,effectiveModules(session)),confirmation:`${session.confirmation}.${rightsRevision.get(session.user)}`}});
@@ -92,19 +100,25 @@ async function startPilot(options = {}) {
       if(!service) return json(res, 403, { active: false });
       const { token } = await readBody(req); const t = activeToken(token);
       if(!t || t.audience !== service.audience || (service.company && t.company !== service.company)) return json(res, 200, { active: false });
-      return json(res, 200, { active: true, user: t.user, company: t.company, modules: t.modules, permissions:t.permissions, platform:t.platform, audience: t.audience, releaseId: t.releaseId });
+      return json(res, 200, { active: true, user: t.user, company: t.company, modules: t.modules, permissions:t.permissions, platform:t.platform, audience: t.audience, releaseId: t.releaseId, api:t.api });
     }
     const session = lookupSession(bearer(req));
     if(!session) return json(res, 401, { error: 'Unauthorized' });
     if(((req.method==='GET'&&req.url==='/discovery')||(req.method==='POST'&&req.url==='/tokens'))&&!assignedId(session))return json(res,409,{error:'No assigned platform release'});
     if(req.method === 'GET' && req.url === '/discovery') return json(res, 200, { company: session.company, offlineGrant:offlineGrant(session), companyApi: companies[session.company].url, artifactApi: artifactServer.url, modules: effectiveModules(session), release: signedRelease(session) });
     if(req.method === 'POST' && req.url === '/tokens') {
-      const { audience } = await readBody(req);
+      const { audience, activeReleaseId } = await readBody(req);
       if(![`company:${session.company}`, 'artifacts'].includes(audience)) return json(res, 403, { error: 'Audience denied' });
+      const releaseId=audience==='artifacts'?assignedId(session):(activeReleaseId??assignedId(session));
+      if(typeof releaseId!=='string'||!assignedHistory.has(historyKey(session.company,session.platform,releaseId)))return json(res,403,{error:'Release not assigned to company platform'});
+      const release=registry.release(session.company,releaseId);
+      if(audience!=='artifacts'&&!supportedApis.get(session.company).has(release.api))return json(res,409,{error:'API contract retired; update required'});
+      const releaseModules=new Set(release.artifacts.map(a=>a.module));
+      const tokenModules=effectiveModules(session).filter(module=>releaseModules.has(module));
       const token = randomBytes(32).toString('base64url');
       const expiresAt = Date.now() + 60000;
-      tokens.set(hash(token), { ...session, modules: effectiveModules(session), permissions:permissionSnapshot(session.user,effectiveModules(session)), releaseId: assignedId(session), session: hash(bearer(req)), audience, expires: expiresAt });
-      return json(res, 200, { token, audience, company: session.company, user: session.user, expiresAt });
+      tokens.set(hash(token), { ...session, modules: tokenModules, permissions:permissionSnapshot(session.user,tokenModules), releaseId, api:release.api, session: hash(bearer(req)), audience, expires: expiresAt });
+      return json(res, 200, { token, audience, company: session.company, user: session.user, expiresAt, releaseId, api:release.api });
     }
     json(res, 404, { error: 'Not found' });
   },webOrigins);
@@ -118,6 +132,7 @@ async function startPilot(options = {}) {
     companies[company] = await listen(async (req, res) => {
       let identity; try { identity = await authorizeOnline(req, credential); } catch { return json(res, 503, { error: 'Central unavailable' }); }
       if(!identity.active) return json(res, 401, { error: 'Unauthorized' });
+      if(!supportedApis.get(company).has(identity.api))return json(res,409,{error:'API contract retired; update required'});
       const expectedOwner=/^\/records\/([a-z]+)-draft$/.exec(req.url||'')?.[1];
       if(req.method !== 'GET' || !expectedOwner || !Object.hasOwn(fixtureUsers,expectedOwner) || fixtureUsers[expectedOwner].company!==company) return json(res, 404, { error: 'Not found' });
       if(!identity.modules.includes('qr')||!identity.permissions.qr?.includes('view_qr')) return json(res, 403, { error: 'Module access denied' });
@@ -135,6 +150,7 @@ async function startPilot(options = {}) {
   },webOrigins);
   return { central, companies, artifactServer, publicKey: pair.publicKey, introspections: () => introspections,
     assignRelease,
+    setSupportedApis:(company,versions)=>{supportedApis.set(company,requireSupportedApis(company,versions));},
     setModules: (user, modules) => {
       if(!Object.hasOwn(fixtureUsers,user) || !Array.isArray(modules) || modules.some(m => !fixtureUsers[user].modules.includes(m))) throw Error('Invalid fixture grants');
       currentModules.set(user,[...new Set(modules)]);rightsRevision.set(user,rightsRevision.get(user)+1);

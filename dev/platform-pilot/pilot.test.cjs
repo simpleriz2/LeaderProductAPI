@@ -157,3 +157,26 @@ test('earlier browser login without platform retains Web assignment using only i
  const origin='http://127.0.0.1:43002',p=await startPilot({webOrigins:[origin]});t.after(()=>p.close());const nativeSession=await login(p,'alice'),native=JSON.parse((await(await request(p.central.url+'/discovery',nativeSession)).json()).release.payload);const bytes=Buffer.from('/* compatibility web qr */'),digest=createHash('sha256').update(bytes).digest('hex'),key=`artifacts/${digest}.bundle`;const web={...native,id:'alpha-web-compat',platform:'web',runtime:'fixture-web',artifacts:[{...native.artifacts[0],name:'qr.container.js',digest,path:key,size:bytes.length,assets:[]}]};p.assignRelease(web,new Map([[key,bytes]]));
  const response=await fetch(p.central.url+'/login',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify({user:'alice',password:'fixture-only'})});assert.equal(response.status,200);const session=(await response.json()).token;const discovery=await(await request(p.central.url+'/discovery',session)).json();assert.equal(JSON.parse(discovery.release.payload).id,'alpha-web-compat');assert.equal(JSON.parse((await(await request(p.central.url+'/discovery',nativeSession)).json()).release.payload).platform,'android');
 });
+test('API rollout window serves pinned old/new clients and retirement rejects previously issued tokens online',async t=>{
+ const p=await pilot(t),session=await login(p,'alice');const old=await scoped(p,session,'company:alpha');
+ const next=fixtureRelease('alpha','alpha-api2','/* api2 */',['qr']);next.release.api='2.0.0';
+ assert.throws(()=>p.assignRelease(next.release,next.files),/not deployed/);
+ p.setSupportedApis('alpha',['1.0.0','2.0.0']);p.assignRelease(next.release,next.files);
+ const issue=async id=>request(p.central.url+'/tokens',session,{audience:'company:alpha',activeReleaseId:id});
+ const oldResult=await issue('alpha-1');assert.equal(oldResult.status,200);const oldScoped=await oldResult.json();assert.equal(oldScoped.api,'1.0.0');assert.equal(oldScoped.releaseId,'alpha-1');
+ const newResult=await issue('alpha-api2');assert.equal(newResult.status,200);const newScoped=await newResult.json();assert.equal(newScoped.api,'2.0.0');
+ const url=p.companies.alpha.url+'/records/alice-draft';for(const token of [old,oldScoped.token,newScoped.token])assert.equal((await request(url,token)).status,200);
+ p.setSupportedApis('alpha',['2.0.0']);const before=p.introspections();assert.equal((await request(url,old)).status,409);assert.equal((await request(url,oldScoped.token)).status,409);assert.equal(p.introspections()-before,2);
+ assert.equal((await issue('alpha-1')).status,409);assert.equal((await request(url,newScoped.token)).status,200);
+ p.revoke('alice');assert.equal((await request(url,newScoped.token)).status,401);
+});
+test('active release token cannot select another company/platform or invented release; artifact tokens remain candidate-pinned',async t=>{
+ const p=await pilot(t),session=await login(p,'alice');
+ for(const id of ['beta-4','never-assigned',{},'alpha/alpha-1'])assert.equal((await request(p.central.url+'/tokens',session,{audience:'company:alpha',activeReleaseId:id})).status,403);
+ const web=fixtureRelease('alpha','alpha-web-api','/* web */',['qr']);web.release.platform='web';p.assignRelease(web.release,web.files);
+ assert.equal((await request(p.central.url+'/tokens',session,{audience:'company:alpha',activeReleaseId:'alpha-web-api'})).status,403);
+ const next=fixtureRelease('alpha','alpha-next','/* next */',['qr']);p.assignRelease(next.release,next.files);
+ const artifact=await(await request(p.central.url+'/tokens',session,{audience:'artifacts',activeReleaseId:'alpha-1'})).json();assert.equal(artifact.releaseId,'alpha-next');
+ assert.equal((await request(p.artifactServer.url+'/'+next.key,artifact.token)).status,200);
+ for(const versions of [[],['latest'],['1.0'],[null]])assert.throws(()=>p.setSupportedApis('alpha',versions),/compatibility/);
+});
