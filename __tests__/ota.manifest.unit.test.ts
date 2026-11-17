@@ -1,9 +1,6 @@
 import express from 'express';
 import request from 'supertest';
 import { execFileSync } from 'node:child_process';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import router from '../src/routes/ota';
 import { resolveOtaExpoConfig, validateOtaExpoConfig } from '../src/utils/otaExpoConfig';
 
@@ -137,24 +134,8 @@ test('accepts multiple registered schemes and validates iOS identity', () => {
   expect(() => validateOtaExpoConfig({ expoClient: { ...config, ios: {} } }, '0.1.33', 'IOS')).toThrow('bundleIdentifier');
 });
 
-test('direct DB publisher also rejects missing config even during dry run', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'leader-ota-test-'));
-  const file = path.join(dir, 'metadata.json');
-  try {
-    fs.writeFileSync(file, JSON.stringify(release()));
-    expect(() => execFileSync(process.execPath, ['scripts/publish-ota-update-db.js', file, '--dry-run'], {
-      cwd: process.cwd(), env: { ...process.env, DATABASE_URL: 'postgresql://test:test@127.0.0.1:1/test' },
-      stdio: 'pipe', timeout: 20000,
-    })).toThrow(/expoClient/);
-    fs.writeFileSync(file, JSON.stringify(release({ expoClient: config })));
-    const output = execFileSync(process.execPath, ['scripts/publish-ota-update-db.js', file, '--dry-run'], {
-      cwd: process.cwd(), env: { ...process.env, DATABASE_URL: 'postgresql://test:test@127.0.0.1:1/test' },
-      encoding: 'utf8', stdio: 'pipe', timeout: 20000,
-    });
-    expect(output).toContain('Dry run: not writing database');
-    expect(output).not.toContain('postgresql://');
-  } finally {
-    fs.unlinkSync(file);
-    fs.rmdirSync(dir);
-  }
+test('fork refuses the retired direct DB publisher even for dry runs', () => {
+  expect(() => execFileSync(process.execPath, ['scripts/publish-ota-update-db.js', '/missing/metadata.json', '--dry-run'], {
+    cwd: process.cwd(), env: {}, stdio: 'pipe', timeout: 5000,
+  })).toThrow(/LP2_LEGACY_PUBLICATION_DISABLED/);
 });

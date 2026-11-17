@@ -33,3 +33,6 @@ Baseline commands/results are recorded separately in baseline.md. Unit mocks do 
 
 ## Progress 2026-11-17 — local protocol pilot
 Added independent real-HTTP Central/Company/artifact harness; see central-company-pilot.md. Two company release assignments, restricted audiences, online central introspection per Company request, object/tenant artifact isolation and revoke/central-outage tests pass locally. No production dependencies imported; this is a protocol PoC, not replacement persistence/services. APP host implementation was pushed as b72204c. Existing 1F backlog remains incomplete until persistent contracts/identity/Help routing are integrated.
+
+## Publication quarantine extension
+Retired manual publication commands now fail immediately, including dry-run. New fork release delivery must use the isolated signed company-release pipeline; external publishing remains unauthorized. Existing workflow snapshots and recovery history are retained.
