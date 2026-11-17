@@ -68,3 +68,6 @@ TypeScript passed;18pilot HTTP tests,34retained QR unit tests, real Company repo
 
 ### 2026-11-17: pinned actual APP QR client -> Company PG HTTP
 Required client-contract command passed with APP77746a9 (scenario~250ms). Safe CI adds pinned readonly sparse checkout in owned PG job; no root app install/build needed. Source contract test cannot silently skip on missing APP. Raw Company test remains independent. Original orders/1C untouched.
+
+### 2026-11-17: cross-fork QR local restart reconciliation
+Required client contract passed against APP648098c with real server commit/lost-response injection/local SQLite reopen/idempotent retry (about0.5s scenario). CI peer checkout expanded only to owned SDK/reference database fixture source, still no peer package install/publication/deploy. Existing raw Company fixture scenarios remain separate and retain rights/object/revocation/outage coverage.

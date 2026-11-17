@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: simpleriz2/LeaderProductAPP
-          ref: 77746a958fa023ea060ce4376980e832174ff898
+          ref: 648098c80535520f36324d62de1f467df3c2b739
           path: partner-app
           sparse-checkout: src/entities/qr
           persist-credentials: false
@@ -79,12 +79,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: simpleriz2/LeaderProductAPP
-          ref: 77746a958fa023ea060ce4376980e832174ff898
+          ref: 648098c80535520f36324d62de1f467df3c2b739
           path: partner-app
           sparse-checkout: |
             platform-host/modules/qr
             platform-host/core
             platform-host/adapters
+            platform-host/database
+            platform-host/dev/database
           persist-credentials: false
       - run: npm run test:qr-client-contract
         env:
