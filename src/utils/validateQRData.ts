@@ -14,8 +14,8 @@ export function validateQRData(qrType: QRType, qrData: string): string | null {
   switch (qrType) {
     case 'PHONE':
     case 'WHATSAPP':
-      if (!/^[+]\d{5,11}$/.test(qrData)) {
-        return 'Номер телефона должен начинаться с + и содержать до 12 символов';
+      if (!/^[+]\d{5,15}$/.test(qrData)) {
+        return 'Номер телефона должен начинаться с + и содержать от 5 до 15 цифр';
       }
       break;
 

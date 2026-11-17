@@ -59,3 +59,6 @@ Owned PostgreSQL15.19 cluster restarted on127.0.0.1:54329 only. Test requires ex
 
 ### 2026-11-17: QR create idempotency on PostgreSQL
 TypeScript and actual marked-loopback PostgreSQL scenario passed with migration1->2, two concurrent identical operation IDs returning the same original QR/revision, changed-payload conflict409, retry after later edit retaining original acknowledgement, and exactly one owned document. Prior tenant/owner/rights/concurrent update/restore/pool-reopen cases still passed. Only random test records/receipts cleaned; target server migration history retained. No HTTP/product submission claim.
+
+### 2026-11-17: QR phone destination regression
+4new PHONE/WHATSAPP tests failed before fix, passed after. Combined QR security/image/contact/phone suites34/34 passed6.36s; TypeScript passed. Exact15digits and visual formatting preserved, overlong/embedded-plus/extension input rejects. No calls/messages/scans or external service connections made by tests; ITUprimary specification read only.

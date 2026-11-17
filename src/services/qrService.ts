@@ -66,9 +66,9 @@ export function normalizeAndValidate(qrType: AllowedQrType, qrDataRaw: unknown):
 
   // Спец-нормализация под типы
   if (qrType === 'PHONE' || qrType === 'WHATSAPP') {
-    let cleaned = data.replace(/[^\d+]/g, '');
-    if (!cleaned.startsWith('+')) cleaned = '+' + cleaned.replace(/[^\d]/g, '');
-    data = cleaned.slice(0, 12);
+    // Remove visual separators only; never truncate or silently discard an extension/embedded '+'.
+    const cleaned = data.replace(/[\s().-]/g, '');
+    data = cleaned.startsWith('+') ? cleaned : '+' + cleaned;
   }
 
   if (qrType === 'TELEGRAM') {
