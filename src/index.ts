@@ -1,3 +1,5 @@
+import { registerAuthorizedSubscriptions } from './services/realtimeSubscriptions';
+import { authorizeLegacyRoom, authorizedPresenceUsers } from './services/realtimeAuthorization';
 // src/index.ts
 import path from 'path';
 import http from 'http';
@@ -22,7 +24,7 @@ import qrRouter from './routes/qr';
 import passwordResetRouter from './routes/passwordReset';
 import appealsRouter from './routes/appeals';
 import helpRouter from './modules/help/help.routes';
-import { registerHelpSocket, startHelpDelivery, isHelpRoom } from './modules/help/help.socket';
+import { registerHelpSocket, startHelpDelivery } from './modules/help/help.socket';
 import departmentsRouter from './routes/departments';
 import trackingRouter from './routes/tracking';
 import knowledgeRouter from './modules/knowledge/knowledge.routes';
@@ -345,9 +347,9 @@ function normalizePresenceUserIds(value: unknown): number[] {
     : [];
   return Array.from(
     new Set(
-      raw
+      raw.slice(0,100)
         .map((item: any) => Number(item))
-        .filter((id: number) => Number.isFinite(id) && id > 0)
+        .filter((id: number) => Number.isSafeInteger(id) && id > 0)
     )
   );
 }
@@ -457,17 +459,12 @@ io.on('connection', (socket) => {
   }
 
   registerHelpSocket(io, socket);
-  socket.on('join', (room: string) => { if (typeof room === 'string' && room && !isHelpRoom(room)) socket.join(room); });
-  socket.on('leave', (room: string) => { if (room) socket.leave(room); });
+  registerAuthorizedSubscriptions(socket, userId, { room: authorizeLegacyRoom, presence: authorizedPresenceUsers });
   socket.on('presence:focus', (payload: unknown) => {
     if (!Number.isFinite(userId) || userId <= 0) return;
     if (!payload || typeof payload !== 'object') return;
     if (typeof (payload as any).focused !== 'boolean') return;
     applyPresenceFocus(socket, userId, (payload as any).focused);
-  });
-  socket.on('presence:subscribe', (payload: unknown) => {
-    const userIds = normalizePresenceUserIds(payload);
-    userIds.forEach((id) => socket.join(`presence:${id}`));
   });
   socket.on('presence:unsubscribe', (payload: unknown) => {
     const userIds = normalizePresenceUserIds(payload);

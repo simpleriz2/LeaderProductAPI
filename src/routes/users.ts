@@ -1,3 +1,4 @@
+import { authorizedPresenceUsers } from '../services/realtimeAuthorization';
 import express from 'express';
 import multer from 'multer';
 import { ActionType, ProfileStatus, ProfileType } from '@prisma/client';
@@ -2570,7 +2571,8 @@ router.get(
           errorResponse('Неверные ids', ErrorCodes.VALIDATION_ERROR)
         );
       }
-      const presence = await getPresenceForUsers(ids);
+      const authorizedIds = await authorizedPresenceUsers(req.user!.userId, ids);
+      const presence = await getPresenceForUsers(authorizedIds);
       return res.json(successResponse(presence));
     } catch (error) {
       return res.status(500).json(

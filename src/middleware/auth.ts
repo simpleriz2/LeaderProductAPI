@@ -87,7 +87,7 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
 /**
  * Собирает все названия ролей с учётом иерархии (по имени роли).
  */
-async function getRoleHierarchyByName(roleName: string): Promise<Set<string>> {
+export async function getRoleHierarchyByName(roleName: string): Promise<Set<string>> {
   const names = new Set<string>();
   let current: string | null = roleName;
 
@@ -154,7 +154,7 @@ async function collectRoleChain(roleId?: number | null): Promise<Set<number>> {
  * - базовой роли user.role (+ вся иерархия parentRoleId),
  * - всех ролей из DepartmentRole (+ их иерархии).
  */
-async function computeUserPermissions(userId: number): Promise<Set<string>> {
+export async function computeUserPermissions(userId: number): Promise<Set<string>> {
   const user = await authPrisma.user.findUnique({
     where: { id: userId },
     select: {

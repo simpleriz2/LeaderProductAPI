@@ -32,7 +32,8 @@
     "worker:knowledge:dev": "node -r ts-node/register src/workers/knowledgeWorker.ts",
     "worker:help": "node dist/workers/helpAssistantWorker.js",
     "worker:help:dev": "node -r ts-node/register src/workers/helpAssistantWorker.ts",
-    "test:platform-pilot": "node --test dev/platform-pilot/pilot.test.cjs"
+    "test:platform-pilot": "node --test dev/platform-pilot/pilot.test.cjs",
+    "test:realtime-wire": "node --experimental-strip-types --test dev/realtime/subscriptions.test.cjs"
   },
   "keywords": [],
   "author": "",
@@ -103,7 +104,8 @@
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "ws": "8.20.1"
   },
   "overrides": {
     "@hono/node-server": "1.19.13",
