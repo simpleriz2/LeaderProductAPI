@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS lp2_company.schema_versions (
   owner text PRIMARY KEY, version integer NOT NULL CHECK(version>0)
 );
 DO $$ BEGIN
-  IF EXISTS(SELECT 1 FROM lp2_company.schema_versions WHERE owner IN ('identity','qr') AND version<>1) THEN
+  IF EXISTS(SELECT 1 FROM lp2_company.schema_versions WHERE (owner='identity' AND version<>1) OR (owner='qr' AND version NOT IN (1,2))) THEN
     RAISE EXCEPTION 'Unsupported retained Company schema version';
   END IF;
 END $$;

@@ -1,5 +1,5 @@
 import type {Pool,PoolClient} from 'pg';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 export type CompanyActor={company:string;user:string;modules:readonly string[];permissions:Readonly<Record<string,readonly string[]>>};
 export type QrContent={qrType:'PHONE'|'LINK'|'EMAIL'|'TEXT'|'WHATSAPP'|'TELEGRAM'|'CONTACT';qrData:string;description:string|null};
 export type QrStatus='ACTIVE'|'PAUSED'|'DELETED';
@@ -13,6 +13,7 @@ function content(value:QrContent):QrContent{
 }
 const columns='id, qr_type, qr_data, description, status, revision';
 function decode(row:any):CompanyQrDocument{
+ if(!row||!uuid(row.id)||!['ACTIVE','PAUSED','DELETED'].includes(row.status))throw Error('Invalid stored QR document');
  const revision=Number(row.revision);if(!Number.isSafeInteger(revision)||revision<1)throw Error('Invalid stored QR revision');
  return{...content({qrType:row.qr_type,qrData:row.qr_data,description:row.description}),id:row.id,status:row.status,revision};
 }
@@ -26,7 +27,7 @@ export function createCompanyQrRepository(pool:Pool,company:string){
    await client.query('BEGIN');
    try{
     const versions=await client.query("SELECT owner,version FROM lp2_company.schema_versions WHERE owner IN ('identity','qr')");
-    if(versions.rowCount!==2||versions.rows.some(row=>row.version!==1))throw Error('Unsupported Company QR schema');
+    if(versions.rowCount!==2||versions.rows.some(row=>row.version!==(row.owner==='qr'?2:1)))throw Error('Unsupported Company QR schema');
     const mapping=await client.query('SELECT local_user FROM lp2_company.subjects WHERE company=$1 AND central_user=$2 AND active=true FOR SHARE',[company,centralUser]);
     if(!mapping.rowCount)throw new QrRepositoryError(403,'Company subject mapping denied');
     const result=await work(client,mapping.rows[0].local_user);await client.query('COMMIT');return result;
@@ -40,8 +41,16 @@ export function createCompanyQrRepository(pool:Pool,company:string){
   if(!found.rowCount)throw new QrRepositoryError(404,'QR not found');return decode(found.rows[0]);
  }
  return Object.freeze({
-  async create(actor:CompanyActor,input:QrContent){const snapshot=content(input);return authorized(actor,'create_qr',async(client,owner)=>{
-   const result=await client.query(`INSERT INTO lp2_company.qr_documents(company,id,owner,qr_type,qr_data,description,status) VALUES($1,$2,$3,$4,$5,$6,'ACTIVE') RETURNING ${columns}`,[company,randomUUID(),owner,snapshot.qrType,snapshot.qrData,snapshot.description]);return decode(result.rows[0]);
+  async create(actor:CompanyActor,input:QrContent,operationId:string){
+   if(!uuid(operationId))throw new QrRepositoryError(400,'QR operation id required');
+   const snapshot=content(input);const hash=createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+   return authorized(actor,'create_qr',async(client,owner)=>{
+   const lock=createHash('sha256').update(JSON.stringify([company,owner,operationId])).digest().readBigInt64BE().toString();
+   await client.query('SELECT pg_advisory_xact_lock($1::bigint)',[lock]);
+   const receipt=await client.query('SELECT payload_hash,response FROM lp2_company.qr_create_receipts WHERE company=$1 AND owner=$2 AND operation_id=$3',[company,owner,operationId]);
+   if(receipt.rowCount){if(receipt.rows[0].payload_hash!==hash)throw new QrRepositoryError(409,'QR operation payload conflict');return decode(receipt.rows[0].response);}
+   const result=await client.query(`INSERT INTO lp2_company.qr_documents(company,id,owner,qr_type,qr_data,description,status) VALUES($1,$2,$3,$4,$5,$6,'ACTIVE') RETURNING ${columns}`,[company,randomUUID(),owner,snapshot.qrType,snapshot.qrData,snapshot.description]);
+   await client.query('INSERT INTO lp2_company.qr_create_receipts(company,owner,operation_id,payload_hash,document_id,response) VALUES($1,$2,$3,$4,$5,$6::jsonb)',[company,owner,operationId,hash,result.rows[0].id,JSON.stringify(result.rows[0])]);return decode(result.rows[0]);
   });},
   async get(actor:CompanyActor,documentId:string){validDocument(documentId);return authorized(actor,'view_qr',async(client,owner)=>{
    const result=await client.query(`SELECT ${columns} FROM lp2_company.qr_documents WHERE company=$1 AND id=$2 AND owner=$3`,[company,documentId,owner]);if(!result.rowCount)throw new QrRepositoryError(404,'QR not found');return decode(result.rows[0]);
