@@ -21,11 +21,11 @@ async function startPilot() {
   const artifacts = new Map();
   const signedSets = new Map();
   for(const [company, user] of [['alpha','alice'], ['beta','bob']]) {
-    const release = { id: `${company}-${company === 'alpha' ? 1 : 4}`, company, minHost: 1, runtime: 'rn-0.88.1-react-19.3.0', api: '1.0.0', artifacts: [] };
+    const release = { format: 1, platform: 'android', id: `${company}-${company === 'alpha' ? 1 : 4}`, company, minHost: 1, runtime: 'rn-0.88.1-react-19.3.0', api: '1.0.0', artifacts: [] };
     for(const module of fixtureUsers[user].modules) {
       const bytes = Buffer.from(`/* fixture ${company} ${module} */`); const digest = hash(bytes);
       artifacts.set(`artifacts/${digest}.bundle`, { bytes, module, company });
-      release.artifacts.push({ module, version: company === 'beta' ? '2.0.0' : '1.0.0', contract: '1.0.0', schema: 1, digest, path: `artifacts/${digest}.bundle` });
+      release.artifacts.push({ module, name: `${module}.container.bundle`, size: bytes.length, assets: [], version: company === 'beta' ? '2.0.0' : '1.0.0', contract: '1.0.0', schema: 1, digest, path: `artifacts/${digest}.bundle` });
     }
     const payload = JSON.stringify(release);
     signedSets.set(company, { keyId: 'pilot-key', payload, signature: sign(null, Buffer.from(payload), pair.privateKey).toString('base64') });

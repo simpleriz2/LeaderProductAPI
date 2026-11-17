@@ -12,3 +12,6 @@ Pending: shared versioned contract package with APP (currently matching semantic
 
 ## Routing contract extension 2026-11-17
 Discovery now includes the dedicated artifact endpoint; scoped token responses include user/company/audience/expiresAt, so APP can validate context before attaching the token. Pilot tests remain 4/4 passed. Cross-fork APP ServiceRouter + real Web/Node fetch transport test passed locally for both companies and post-revoke denial; exact command lives in APP baseline.md. No persistent/external/native integration claim.
+
+## Explicit unreleased manifest format 2026-11-17
+Pilot payload now declares format:1/platform:android and per-file name/size/assets inventory fields matching APP verifier. Fixture entries have no additional assets; actual Re.Pack package completeness is exercised by APP's 28-file/module integration harness. No external/deployed client protocol exists yet; this does not remove the required future offline compatibility window.
